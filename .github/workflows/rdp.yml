@@ -12,21 +12,22 @@ jobs:
         shell: cmd
 
       - name: Enable RDP and disable NLA
+        shell: powershell
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        shell: powershell
 
       - name: Download ngrok
+        shell: powershell
         run: |
           Invoke-WebRequest -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
           Expand-Archive -Path "ngrok.zip" -DestinationPath "."
           .\ngrok.exe config add-authtoken ${{ secrets.NGROK_TOKEN }}
-        shell: powershell
 
-      - name: Start ngrok and keep alive
+      - name: Start ngrok
+        shell: powershell
         run: |
           Start-Process .\ngrok.exe -ArgumentList "tcp 3389" -WindowStyle Hidden
           Start-Sleep -Seconds 15
@@ -36,17 +37,21 @@ jobs:
           Write-Host "USERNAME: runneradmin"
           Write-Host "PASSWORD: P@ssw0rd123!"
           Write-Host "================================================"
-          for ($i=0; $i -lt 70; $i++) {
-            Start-Sleep -Seconds 300
+
+      - name: Keep alive
+        shell: powershell
+        run: |
+          for ($i=0; $i -lt 350; $i++) {
+            Start-Sleep -Seconds 60
+            $alive = $false
             try {
-              $tunnel = (Invoke-RestMethod http://127.0.0.1:4040/api/tunnels).tunnels[0].public_url
-              Write-Host "Minute $($i*5): tunnel alive at $tunnel"
-            } catch {
-              Write-Host "ngrok died — restarting"
+              $r = Invoke-RestMethod http://127.0.0.1:4040/api/tunnels
+              if ($r.tunnels.Count -gt 0) { $alive = $true }
+            } catch { }
+            if (-not $alive) {
               Start-Process .\ngrok.exe -ArgumentList "tcp 3389" -WindowStyle Hidden
               Start-Sleep -Seconds 15
-              $tunnel = (Invoke-RestMethod http://127.0.0.1:4040/api/tunnels).tunnels[0].public_url
-              Write-Host "NEW RDP ADDRESS: $tunnel"
+              $t = (Invoke-RestMethod http://127.0.0.1:4040/api/tunnels).tunnels[0].public_url
+              Write-Host "RESTARTED ngrok at minute $i. NEW ADDRESS: $t"
             }
           }
-        shell: powershell
