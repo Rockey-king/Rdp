@@ -11,7 +11,7 @@ jobs:
         run: net user runneradmin "P@ssw0rd123!" /Y
         shell: cmd
 
-      - name: Enable RDP
+      - name: Enable RDP and disable NLA
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
@@ -28,7 +28,7 @@ jobs:
 
       - name: Start ngrok and keep alive
         run: |
-          $proc = Start-Process .\ngrok.exe -ArgumentList "tcp 3389 --log=stdout --log-format=logfmt" -PassThru -RedirectStandardOutput ngrok.log
+          Start-Process .\ngrok.exe -ArgumentList "tcp 3389" -WindowStyle Hidden
           Start-Sleep -Seconds 15
           $tunnel = (Invoke-RestMethod http://127.0.0.1:4040/api/tunnels).tunnels[0].public_url
           Write-Host "================================================"
@@ -36,17 +36,17 @@ jobs:
           Write-Host "USERNAME: runneradmin"
           Write-Host "PASSWORD: P@ssw0rd123!"
           Write-Host "================================================"
-          # Print address again every 5 min and verify ngrok is still running
           for ($i=0; $i -lt 70; $i++) {
             Start-Sleep -Seconds 300
-            if ($proc.HasExited) {
-              Write-Host "ngrok died, restarting..."
-              $proc = Start-Process .\ngrok.exe -ArgumentList "tcp 3389 --log=stdout --log-format=logfmt" -PassThru -RedirectStandardOutput ngrok.log
+            try {
+              $tunnel = (Invoke-RestMethod http://127.0.0.1:4040/api/tunnels).tunnels[0].public_url
+              Write-Host "Minute $($i*5): tunnel alive at $tunnel"
+            } catch {
+              Write-Host "ngrok died — restarting"
+              Start-Process .\ngrok.exe -ArgumentList "tcp 3389" -WindowStyle Hidden
               Start-Sleep -Seconds 15
               $tunnel = (Invoke-RestMethod http://127.0.0.1:4040/api/tunnels).tunnels[0].public_url
               Write-Host "NEW RDP ADDRESS: $tunnel"
-            } else {
-              Write-Host "Still alive at minute $($i*5). Address: $tunnel"
             }
           }
         shell: powershell
